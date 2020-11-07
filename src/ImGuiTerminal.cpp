@@ -1008,6 +1008,7 @@ std::shared_ptr<ImGuiTerminal> ImGuiTerminal::Create(int columns, int rows, cons
     }
 
     std::shared_ptr<ImGuiTerminal> terminal = std::shared_ptr<ImGuiTerminal>(new ImGuiTerminal(columns, rows));
+    terminal->m_useColorEmoji = options & OPTION_COLOR_EMOJI;
     terminal->m_terminal = TerminalEmulator::Create(std::move(pseudoTerminal), std::move(process), terminal);
     return terminal;
 }

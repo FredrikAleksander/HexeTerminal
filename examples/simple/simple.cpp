@@ -87,8 +87,8 @@ int main(int argc, char *argv[])
     // cfg.OversampleH = 1;
     // cfg.OversampleV = 1;
     cfg.RasterizerFlags = ImGuiFreeTypeEx::EmbedEmoji;
-    //auto defaultFont = io.Fonts->AddFontFromFileTTF(options.font.c_str(), options.fontSize != 0.0f ? options.fontSize : 23.0f, &cfg, glyphRanges.Data);
-    auto defaultFont = io.Fonts->AddFontDefault(&cfg);
+    //auto fontDefault = io.Fonts->AddFontFromFileTTF(options.font.c_str(), options.fontSize != 0.0f ? options.fontSize : 23.0f, &cfg, glyphRanges.Data);
+    auto fontDefault = io.Fonts->AddFontDefault(&cfg);
 
     ImVector<unsigned char> emojiFontData{};
     LoadEmojiFont(emojiFontData);
@@ -163,21 +163,21 @@ int main(int argc, char *argv[])
 
             if (ImGui::Begin("Terminal", &showTerminalWindow))
             {
-                auto scale = ImGui::GetFontSize() / defaultFont->FontSize;
+                auto scale = ImGui::GetFontSize() / fontDefault->FontSize;
 
                 auto contentRegion = ImGui::GetContentRegionAvail();
                 auto contentPos = ImGui::GetCursorScreenPos();
 
                 if (!terminal || terminal->HasTerminated())
                 {
-                    auto spacingChar = defaultFont->FindGlyph('A');
+                    auto spacingChar = fontDefault->FindGlyph('A');
                     auto charWidth = spacingChar->AdvanceX * scale;
-                    auto charHeight = defaultFont->FontSize * scale;
+                    auto charHeight = fontDefault->FontSize * scale;
 
                     auto columns = (int)std::floor(std::max(1.0f, contentRegion.x / charWidth));
                     auto rows = (int)std::floor(std::max(1.0f, contentRegion.y / charHeight));
 
-                    terminal = Hexe::Terminal::ImGuiTerminal::Create(columns, rows, "cmd.exe", {}, "");
+                    terminal = Hexe::Terminal::ImGuiTerminal::Create(columns, rows, "cmd.exe", {}, "", emojiFontData.empty() ? 0 : Hexe::Terminal::ImGuiTerminal::OPTION_COLOR_EMOJI);
                 }
                 if (!terminal)
                     exitRequested = true;

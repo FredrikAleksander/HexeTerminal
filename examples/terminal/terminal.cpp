@@ -11,13 +11,29 @@
 #undef max
 #undef min
 
-static void LoadEmojiFont(ImVector<unsigned char> &emojiBuffer)
+struct TerminalOptions
 {
+    std::string program;
+    ImVector<std::string> arguments;
 
-    auto p = std::filesystem::path(SDL_GetBasePath()) / "NotoColorEmoji.ttf";
-    if (std::filesystem::exists(p))
+    std::string font;
+    std::string fontBold;
+    std::string fontItalic;
+    std::string fontBoldItalic;
+    std::string fontEmoji;
+
+    float fontSize;
+
+    int windowWidth;
+    int windowHeight;
+    bool fullscreen;
+};
+
+static void LoadEmojiFont(const std::string &emojiFontPath, ImVector<unsigned char> &emojiBuffer)
+{
+    if (std::filesystem::exists(emojiFontPath))
     {
-        std::ifstream emojiFile(p.c_str(), std::ios::binary | std::ios::ate);
+        std::ifstream emojiFile(emojiFontPath.c_str(), std::ios::binary | std::ios::ate);
         std::streamsize size = emojiFile.tellg();
         emojiFile.seekg(0, std::ios::beg);
 
@@ -29,11 +45,55 @@ static void LoadEmojiFont(ImVector<unsigned char> &emojiBuffer)
     }
 }
 
+void SetDefaultFont(TerminalOptions &options, const std::filesystem::path &basePath)
+{
+    using std::filesystem::exists;
+
+    auto fontDefault = basePath / "JetBrains Mono Regular Nerd Font Complete Mono.ttf";
+    auto fontBold = basePath / "JetBrains Mono Italic Nerd Font Complete Mono.ttf";
+    auto fontItalic = basePath / "JetBrains Mono Bold Nerd Font Complete Mono.ttf";
+    auto fontBoldItalic = basePath / "JetBrains Mono Bold Italic Nerd Font Complete Mono.ttf";
+    auto emojiFontPath = basePath / "NotoColorEmoji.ttf";
+
+    if (exists(fontDefault))
+    {
+        options.fontSize = 16;
+        options.font = fontDefault.string();
+        if (exists(fontBold))
+            options.fontBold = fontBold.string();
+        if (exists(fontItalic))
+            options.fontItalic = fontItalic.string();
+        if (exists(fontBoldItalic))
+            options.fontBoldItalic = fontBoldItalic.string();
+        if (exists(emojiFontPath))
+            options.fontEmoji = emojiFontPath.string();
+    }
+}
+
 int main(int argc, char *argv[])
 {
-    int windowWidth = 800;
-    int windowHeight = 600;
-    bool fullscreen = false;
+    TerminalOptions options{};
+
+    options.windowWidth = 800;
+    options.windowHeight = 600;
+
+    std::filesystem::path basePath{SDL_GetBasePath()};
+
+    SetDefaultFont(options, basePath);
+
+    if (options.fontSize <= 0)
+    {
+        options.fontSize = 13;
+    }
+
+    if (options.program.empty())
+    {
+#ifdef WIN32
+        options.program = "cmd.exe";
+#else
+        options.program = "/bin/sh";
+#endif
+    }
 
 #ifdef WIN32
     SetEnvironmentVariableA("WSLENV", "TERM/u");
@@ -56,11 +116,11 @@ int main(int argc, char *argv[])
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-    if (fullscreen)
+    if (options.fullscreen)
     {
         window_flags = (SDL_WindowFlags)(window_flags | SDL_WINDOW_FULLSCREEN_DESKTOP);
     }
-    SDL_Window *window = SDL_CreateWindow("ImGuiTerminal", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, windowWidth, windowHeight, window_flags);
+    SDL_Window *window = SDL_CreateWindow("Terminal", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, options.windowWidth, options.windowHeight, window_flags);
     SDL_GLContext gl_context = SDL_GL_CreateContext(window);
     SDL_GL_MakeCurrent(window, gl_context);
     SDL_GL_SetSwapInterval(1); // Enable vsync
@@ -82,16 +142,59 @@ int main(int argc, char *argv[])
 
     ImGui::StyleColorsDark();
 
+    unsigned int rasterizerFlags = 0;
+
+    const ImWchar powerlineRange[] = {0xe0a0, 0xe0d4, 0};
+    const ImWchar deviconsRange[] = {0xe700, 0xe7c5, 0};
+    const ImWchar setiuiRange[] = {0xe5fa, 0xe62b, 0};
+    const ImWchar octiconsRange[] = {0xf400, 0xf67c, 0};
+    const ImWchar fontlinuxRange[] = {0xf300, 0xf313, 0};
+
+    // Add the symbol ranges found in Nerd Fonts
+    ImVector<ImWchar> glyphRanges;
+    ImFontGlyphRangesBuilder glyphRangeBuilder;
+    glyphRangeBuilder.AddRanges(io.Fonts->GetGlyphRangesDefault());
+    glyphRangeBuilder.AddRanges(powerlineRange);
+    glyphRangeBuilder.AddRanges(deviconsRange);
+    glyphRangeBuilder.AddRanges(setiuiRange);
+    glyphRangeBuilder.AddRanges(octiconsRange);
+    glyphRangeBuilder.AddRanges(fontlinuxRange);
+    glyphRangeBuilder.BuildRanges(&glyphRanges);
+
     ImFontConfig cfg{};
-    // cfg.SizePixels = 26;
+    cfg.SizePixels = options.fontSize;
     // cfg.OversampleH = 1;
     // cfg.OversampleV = 1;
-    cfg.RasterizerFlags = ImGuiFreeTypeEx::EmbedEmoji;
-    //auto defaultFont = io.Fonts->AddFontFromFileTTF(options.font.c_str(), options.fontSize != 0.0f ? options.fontSize : 23.0f, &cfg, glyphRanges.Data);
-    auto defaultFont = io.Fonts->AddFontDefault(&cfg);
+
+    ImFont *fontDefault = nullptr;
+    ImFont *fontBold = nullptr;
+    ImFont *fontItalic = nullptr;
+    ImFont *fontBoldItalic = nullptr;
+
+    if (std::filesystem::exists(options.font))
+    {
+        rasterizerFlags = ImGuiFreeTypeEx::RasterizerFlags::ForceAutoHint;
+        cfg.RasterizerFlags = rasterizerFlags | ImGuiFreeTypeEx::EmbedEmoji;
+
+        fontDefault = io.Fonts->AddFontFromFileTTF(options.font.c_str(), options.fontSize, &cfg, glyphRanges.Data);
+
+        cfg.RasterizerFlags = rasterizerFlags;
+
+        if (std::filesystem::exists(options.fontBold))
+            fontBold = io.Fonts->AddFontFromFileTTF(options.fontBold.c_str(), options.fontSize, &cfg);
+        if (std::filesystem::exists(options.fontItalic))
+            fontBold = io.Fonts->AddFontFromFileTTF(options.fontItalic.c_str(), options.fontSize, &cfg);
+        if (std::filesystem::exists(options.fontBoldItalic))
+            fontBold = io.Fonts->AddFontFromFileTTF(options.fontBoldItalic.c_str(), options.fontSize, &cfg);
+    }
+    else
+    {
+        cfg.RasterizerFlags = ImGuiFreeTypeEx::EmbedEmoji;
+        io.Fonts->AddFontDefault(&cfg);
+    }
 
     ImVector<unsigned char> emojiFontData{};
-    LoadEmojiFont(emojiFontData);
+    LoadEmojiFont(options.fontEmoji, emojiFontData);
     ImGuiFreeTypeEx::BuildFontAtlas(io.Fonts, 0, emojiFontData);
 
     // Setup Platform/Renderer backends
@@ -103,6 +206,8 @@ int main(int argc, char *argv[])
     bool showTerminalWindow = true;
 
     bool exitRequested = false;
+
+    std::string title = "Terminal";
 
     std::shared_ptr<Hexe::Terminal::ImGuiTerminal> terminal = nullptr;
 
@@ -149,7 +254,14 @@ int main(int argc, char *argv[])
         }
 
         if (terminal)
+        {
             terminal->Update();
+            if (terminal->GetTitle() != title)
+            {
+                title = terminal->GetTitle();
+                SDL_SetWindowTitle(window, title.empty() ? "Terminal" : title.c_str());
+            }
+        }
 
         if (showDemoWindow)
         {
@@ -161,25 +273,31 @@ int main(int argc, char *argv[])
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{});
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{});
 
-            if (ImGui::Begin("Terminal", &showTerminalWindow))
+            auto displaySize = io.DisplaySize;
+
+            ImGui::SetNextWindowPos(ImVec2{});
+            ImGui::SetNextWindowSize(displaySize);
+
+            if (ImGui::Begin("Terminal", &showTerminalWindow, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar))
             {
-                auto scale = ImGui::GetFontSize() / defaultFont->FontSize;
+                auto scale = ImGui::GetFontSize() / fontDefault->FontSize;
 
                 auto contentRegion = ImGui::GetContentRegionAvail();
                 auto contentPos = ImGui::GetCursorScreenPos();
 
-                if (!terminal || terminal->HasTerminated())
+                if (!terminal)
                 {
-                    auto spacingChar = defaultFont->FindGlyph('A');
+                    auto spacingChar = fontDefault->FindGlyph('A');
                     auto charWidth = spacingChar->AdvanceX * scale;
-                    auto charHeight = defaultFont->FontSize * scale;
+                    auto charHeight = fontDefault->FontSize * scale;
 
                     auto columns = (int)std::floor(std::max(1.0f, contentRegion.x / charWidth));
                     auto rows = (int)std::floor(std::max(1.0f, contentRegion.y / charHeight));
 
-                    terminal = Hexe::Terminal::ImGuiTerminal::Create(columns, rows, "cmd.exe", {}, "");
+                    terminal = Hexe::Terminal::ImGuiTerminal::Create(columns, rows, options.program, options.arguments, "", emojiFontData.empty() ? 0 : Hexe::Terminal::ImGuiTerminal::OPTION_COLOR_EMOJI);
+                    terminal->SetFont(fontDefault, fontBold, fontItalic, fontBoldItalic);
                 }
-                if (!terminal)
+                if (!terminal || terminal->HasTerminated())
                     exitRequested = true;
                 else
                 {
