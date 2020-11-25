@@ -34,6 +34,7 @@
 #include <cmath>
 #include <utility>
 #include <SDL.h>
+#include "Hexe/Terminal/EmojiGlyphRanges.h"
 
 #ifdef _MSC_VER
 #pragma warning(disable : 4505) // unreferenced local function has been removed (stb stuff)
@@ -46,28 +47,26 @@
 
 namespace
 {
-    static const ImWchar emojiRange[] = { 
-        0x1F600, 
-        0x1F64F, 
-        
-        0x1F300, 
-        0x1F5FF, 
-        
-        0x1FA70, 
-        0x1FAFF, 
-        
-        0x1F900, 
-        0x1F9FF, 
-        
-        0x1F680, 
-        0x1F6FF,
+    // static const ImWchar emojiRange[] = {
+    //     0x1F600,
+    //     0x1F64F,
 
-        0x1F004,
-        0x1F004,
-        
-        0 
-    };
+    //     0x1F300,
+    //     0x1F5FF,
 
+    //     0x1FA70,
+    //     0x1FAFF,
+
+    //     0x1F900,
+    //     0x1F9FF,
+
+    //     0x1F680,
+    //     0x1F6FF,
+
+    //     0x1F004,
+    //     0x1F004,
+
+    //     0};
 
     // Glyph metrics:
     // --------------
@@ -113,12 +112,12 @@ namespace
     // Font parameters and metrics.
     struct FontInfo
     {
-        uint32_t PixelHeight;  // Size this font was generated with.
-        float Ascender;        // The pixel extents above the baseline in pixels (typically positive).
-        float Descender;       // The extents below the baseline in pixels (typically negative).
-        float LineSpacing;     // The baseline-to-baseline distance. Note that it usually is larger than the sum of the ascender and descender taken as absolute values. There is also no guarantee that no glyphs extend above or below subsequent baselines when using this distance. Think of it as a value the designer of the font finds appropriate.
-        float LineGap;         // The spacing in pixels between one row's descent and the next row's ascent.
-        float MaxAdvanceWidth; // This field gives the maximum horizontal cursor advance for all glyphs in the font.
+        uint32_t PixelHeight;    // Size this font was generated with.
+        float Ascender;          // The pixel extents above the baseline in pixels (typically positive).
+        float Descender;         // The extents below the baseline in pixels (typically negative).
+        float LineSpacing;       // The baseline-to-baseline distance. Note that it usually is larger than the sum of the ascender and descender taken as absolute values. There is also no guarantee that no glyphs extend above or below subsequent baselines when using this distance. Think of it as a value the designer of the font finds appropriate.
+        float LineGap;           // The spacing in pixels between one row's descent and the next row's ascent.
+        float MaxAdvanceWidth;   // This field gives the maximum horizontal cursor advance for all glyphs in the font.
         float EmojiAdvanceWidth; // This holds the advance width of narrow characters in monospace fonts
     };
 
@@ -127,10 +126,11 @@ namespace
         FT_Face Face;
         ImVector<ImWchar> glyphCodepoints;
 
-        EmojiFont(FT_Library ft_library, const ImVector<unsigned char>& fontData)
+        EmojiFont(FT_Library ft_library, const ImVector<unsigned char> &fontData)
             : Face(nullptr)
         {
-            if(!fontData.empty()) {
+            if (!fontData.empty())
+            {
                 FT_Error error = FT_New_Memory_Face(ft_library, fontData.Data, fontData.Size, 0, &Face);
                 if (error != 0)
                     return;
@@ -138,12 +138,14 @@ namespace
                 if (error != 0)
                     return;
 
-                const ImWchar* er = emojiRange;
-                while(*er != '\0') {
+                const ImWchar *er = (const ImWchar *)emojiGlyphRanges;
+                while (*er != '\0')
+                {
                     const ImWchar start = er[0];
-                    const ImWchar end   = er[1];
+                    const ImWchar end = er[1];
 
-                    for(auto r = start; r <= end; r++) {
+                    for (auto r = start; r <= end; r++)
+                    {
                         glyphCodepoints.push_back(r);
                     }
 
@@ -152,8 +154,10 @@ namespace
             }
         }
 
-        ~EmojiFont() {
-            if(Face) {
+        ~EmojiFont()
+        {
+            if (Face)
+            {
                 FT_Done_Face(Face);
             }
         }
@@ -259,9 +263,12 @@ namespace
         Info.MaxAdvanceWidth = (float)FT_CEIL(metrics.max_advance);
 
         auto spacingCharMetrics = LoadGlyph('A');
-        if(spacingCharMetrics) {
+        if (spacingCharMetrics)
+        {
             Info.EmojiAdvanceWidth = ((float)FT_CEIL(spacingCharMetrics->horiAdvance)) * 2.0f;
-        } else {
+        }
+        else
+        {
             Info.EmojiAdvanceWidth = (float)FT_CEIL(metrics.max_advance);
         }
     }
@@ -358,13 +365,15 @@ namespace
         }
     }
 
-    bool AddEmoji(ImFontAtlas* atlas, ImFont* dstFont, ImVector<std::pair<ImWchar, int>>& rects, float charWidth, float charHeight, EmojiFont& font) {
+    bool AddEmoji(ImFontAtlas *atlas, ImFont *dstFont, ImVector<std::pair<ImWchar, int>> &rects, float charWidth, float charHeight, EmojiFont &font)
+    {
         auto emojiWidth = (int)std::floor(charWidth);
         auto emojiHeight = (int)std::floor(charHeight);
 
         ImVec2 emojiOffset(0, 0);
-        
-        for(auto codepoint : font.glyphCodepoints) {
+
+        for (auto codepoint : font.glyphCodepoints)
+        {
             uint32_t glyph_index = FT_Get_Char_Index(font.Face, codepoint);
             if (glyph_index == 0)
                 continue;
@@ -376,16 +385,16 @@ namespace
     }
 
     // TODO: Replace SDL with generic scaling blit function
-    void BlitEmoji(FT_GlyphSlot glyph, int w, int h, unsigned char* pixels)
+    void BlitEmoji(FT_GlyphSlot glyph, int w, int h, unsigned char *pixels)
     {
-        SDL_Surface* sourceSurface = SDL_CreateRGBSurfaceFrom(glyph->bitmap.buffer, glyph->bitmap.width, glyph->bitmap.rows, 32, glyph->bitmap.pitch, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
-        SDL_Surface* destSurface = SDL_CreateRGBSurfaceFrom(pixels, w, h, 32, w * 4, 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
+        SDL_Surface *sourceSurface = SDL_CreateRGBSurfaceFrom(glyph->bitmap.buffer, glyph->bitmap.width, glyph->bitmap.rows, 32, glyph->bitmap.pitch, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
+        SDL_Surface *destSurface = SDL_CreateRGBSurfaceFrom(pixels, w, h, 32, w * 4, 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
         memset(destSurface->pixels, 0, destSurface->pitch * h);
 
         SDL_Rect srcRect{};
         SDL_Rect dstRect{};
 
-        auto ratio = std::min((float)w/(float)glyph->bitmap.width, (float)h/(float)glyph->bitmap.rows);
+        auto ratio = std::min((float)w / (float)glyph->bitmap.width, (float)h / (float)glyph->bitmap.rows);
         auto dstW = (int)(ratio * (float)glyph->bitmap.width);
         auto dstH = (int)(ratio * (float)glyph->bitmap.rows);
 
@@ -408,20 +417,23 @@ namespace
         SDL_FreeSurface(destSurface);
     }
 
-    bool BuildEmoji(ImFontAtlas* atlas, ImFont* font, const ImVector<std::pair<ImWchar, int>> rects, float charWidth, float charHeight, EmojiFont& emojiFont) {
+    bool BuildEmoji(ImFontAtlas *atlas, ImFont *font, const ImVector<std::pair<ImWchar, int>> rects, float charWidth, float charHeight, EmojiFont &emojiFont)
+    {
         // Emojis are full width (wide characters)
         auto emojiWidth = (int)std::floor(charWidth);
         auto emojiHeight = (int)std::floor(charHeight);
 
         ImVec2 emojiOffset(0, 0);
 
-        if(emojiFont.Face->num_fixed_sizes > 0) {
+        if (emojiFont.Face->num_fixed_sizes > 0)
+        {
             auto srcWidth = emojiFont.Face->available_sizes[0].width;
             auto srcHeight = emojiFont.Face->available_sizes[0].height;
-            if(FT_Select_Size(emojiFont.Face, 0) != 0)
+            if (FT_Select_Size(emojiFont.Face, 0) != 0)
                 return false;
         }
-        else {
+        else
+        {
             FT_Size_RequestRec req;
             req.type = FT_SIZE_REQUEST_TYPE_REAL_DIM;
             req.width = 0;
@@ -443,15 +455,16 @@ namespace
         FT_Int32 loadFlags = FT_LOAD_COLOR;
         FT_Render_Mode renderMode = FT_RENDER_MODE_NORMAL;
 
-        unsigned char* tex_pixels = nullptr;
+        unsigned char *tex_pixels = nullptr;
         int tex_width, tex_height;
 
         atlas->GetTexDataAsRGBA32(&tex_pixels, &tex_width, &tex_height);
 
         ImVector<ImU32> emojiBuffer{};
-        emojiBuffer.resize(emojiWidth*emojiHeight);
+        emojiBuffer.resize(emojiWidth * emojiHeight);
 
-        for(auto codepointRect : rects) {
+        for (auto codepointRect : rects)
+        {
             uint32_t glyph_index = FT_Get_Char_Index(emojiFont.Face, codepointRect.second);
             FT_Error error = FT_Load_Glyph(emojiFont.Face, glyph_index, loadFlags | FT_LOAD_NO_HINTING);
             if (error)
@@ -459,12 +472,13 @@ namespace
             error = FT_Render_Glyph(emojiFont.Face->glyph, renderMode);
             if (error)
                 continue;
-            
+
             auto customRect = atlas->GetCustomRectByIndex(codepointRect.first);
-            memset(emojiBuffer.Data, 0x00, emojiWidth*emojiHeight*4);
-            BlitEmoji(emojiFont.Face->glyph, emojiWidth, emojiHeight, (unsigned char*)emojiBuffer.Data);
-            for(size_t j = 0; j < emojiHeight; j++) {
-                auto* dstPixels = &tex_pixels[((j + customRect->Y) * tex_width + customRect->X) * 4];
+            memset(emojiBuffer.Data, 0x00, emojiWidth * emojiHeight * 4);
+            BlitEmoji(emojiFont.Face->glyph, emojiWidth, emojiHeight, (unsigned char *)emojiBuffer.Data);
+            for (size_t j = 0; j < emojiHeight; j++)
+            {
+                auto *dstPixels = &tex_pixels[((j + customRect->Y) * tex_width + customRect->X) * 4];
                 memcpy(dstPixels, &emojiBuffer.Data[j * emojiWidth], emojiWidth * 4);
             }
         }
@@ -472,8 +486,6 @@ namespace
     }
 
 } // namespace
-
-
 
 #ifndef STB_RECT_PACK_IMPLEMENTATION // in case the user already have an implementation in the _same_ compilation unit (e.g. unity builds)
 #ifndef IMGUI_DISABLE_STB_RECT_PACK_IMPLEMENTATION
@@ -520,7 +532,7 @@ struct ImFontBuildDstDataFT
     ImBitVector GlyphsSet; // This is used to resolve collision when multiple sources are merged into a same destination font.
 };
 
-bool ImFontAtlasBuildWithFreeType(FT_Library ft_library, ImFontAtlas *atlas, unsigned int extra_flags, const ImVector<unsigned char>& emoji_font_data)
+bool ImFontAtlasBuildWithFreeType(FT_Library ft_library, ImFontAtlas *atlas, unsigned int extra_flags, const ImVector<unsigned char> &emoji_font_data)
 {
     IM_ASSERT(atlas->ConfigData.Size > 0);
 
@@ -563,7 +575,8 @@ bool ImFontAtlasBuildWithFreeType(FT_Library ft_library, ImFontAtlas *atlas, uns
         if (!font_face.InitFont(ft_library, cfg, extra_flags))
             return false;
 
-        if(cfg.RasterizerFlags | extra_flags & ImGuiFreeTypeEx::EmbedEmoji && emojiFont) {
+        if (cfg.RasterizerFlags | extra_flags & ImGuiFreeTypeEx::EmbedEmoji && emojiFont)
+        {
             AddEmoji(atlas, cfg.DstFont, font_face.Emojis, font_face.Info.EmojiAdvanceWidth, (float)font_face.Info.PixelHeight, emojiFont);
         }
 
@@ -801,8 +814,10 @@ bool ImFontAtlasBuildWithFreeType(FT_Library ft_library, ImFontAtlas *atlas, uns
 
     ImFontAtlasBuildFinish(atlas);
 
-    for(int fnt_i = 0; fnt_i < src_tmp_array.Size; fnt_i++) {
-        if(!src_tmp_array[fnt_i].Font.Emojis.empty()) {
+    for (int fnt_i = 0; fnt_i < src_tmp_array.Size; fnt_i++)
+    {
+        if (!src_tmp_array[fnt_i].Font.Emojis.empty())
+        {
             BuildEmoji(atlas, atlas->Fonts[src_tmp_array[fnt_i].DstIndex], src_tmp_array[fnt_i].Font.Emojis, src_tmp_array[fnt_i].Font.Info.EmojiAdvanceWidth, (float)src_tmp_array[fnt_i].Font.Info.PixelHeight, emojiFont);
         }
     }
@@ -812,8 +827,6 @@ bool ImFontAtlasBuildWithFreeType(FT_Library ft_library, ImFontAtlas *atlas, uns
         IM_FREE(buf_bitmap_buffers[buf_i]);
     for (int src_i = 0; src_i < src_tmp_array.Size; src_i++)
         src_tmp_array[src_i].~ImFontBuildSrcDataFT();
-
-    
 
     return true;
 }
@@ -869,7 +882,7 @@ static void *FreeType_Realloc(FT_Memory /*memory*/, long cur_size, long new_size
     return block;
 }
 
-bool ImGuiFreeTypeEx::BuildFontAtlas(ImFontAtlas *atlas, unsigned int extra_flags, const ImVector<unsigned char>& color_emoji_font)
+bool ImGuiFreeTypeEx::BuildFontAtlas(ImFontAtlas *atlas, unsigned int extra_flags, const ImVector<unsigned char> &color_emoji_font)
 {
     // FreeType memory management: https://www.freetype.org/freetype2/docs/design/design-4.html
     FT_MemoryRec_ memory_rec = {};

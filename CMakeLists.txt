@@ -11,7 +11,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 Include(FetchContent)
 
 find_package(SDL2 REQUIRED)
+find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
+
 
 find_package(PNG)
 
@@ -75,9 +77,10 @@ set(HEXE_TERMINAL_HEADERS ${HEXE_TERMINAL_HEADERS}
 )
 set(HEXE_TERMINAL_SOURCES ${HEXE_TERMINAL_SOURCES}
     "src/AutoHandle.cpp"
-    "src/boxdraw.cpp"
+    "src/Pipe.win32.cpp"
     "src/Process.cpp"
     "src/Process.win32.cpp"
+    "src/ProcessFactory.cpp"
     "src/PseudoTerminal.cpp"
     "src/PseudoTerminal.win32.cpp"
     "src/TerminalDisplay.cpp"
@@ -86,6 +89,10 @@ set(HEXE_TERMINAL_SOURCES ${HEXE_TERMINAL_SOURCES}
 
 add_library(HexeTerminal ${HEXE_TERMINAL_HEADERS} ${HEXE_TERMINAL_SOURCES})
 target_include_directories(HexeTerminal PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+	target_link_libraries(HexeTerminal PUBLIC util)
+endif()
 
 set(IMGUI_TERMINAL_HEADERS ${IMGUI_TERMINAL_HEADERS}
     "include/Hexe/Terminal/ImGuiTerminal.h"

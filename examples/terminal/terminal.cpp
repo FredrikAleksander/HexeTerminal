@@ -57,7 +57,7 @@ void SetDefaultFont(TerminalOptions &options, const std::filesystem::path &baseP
 
     if (exists(fontDefault))
     {
-        options.fontSize = 16;
+        options.fontSize = 20;
         options.font = fontDefault.string();
         if (exists(fontBold))
             options.fontBold = fontBold.string();
@@ -195,7 +195,7 @@ int main(int argc, char *argv[])
 
     ImVector<unsigned char> emojiFontData{};
     LoadEmojiFont(options.fontEmoji, emojiFontData);
-    ImGuiFreeTypeEx::BuildFontAtlas(io.Fonts, 0, emojiFontData);
+    ImGuiFreeTypeEx::BuildFontAtlas(io.Fonts, ImGuiFreeTypeEx::ForceAutoHint, emojiFontData);
 
     // Setup Platform/Renderer backends
     ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
@@ -278,7 +278,7 @@ int main(int argc, char *argv[])
             ImGui::SetNextWindowPos(ImVec2{});
             ImGui::SetNextWindowSize(displaySize);
 
-            if (ImGui::Begin("Terminal", &showTerminalWindow, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar))
+            if (ImGui::Begin("Terminal", &showTerminalWindow, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoDecoration))
             {
                 auto scale = ImGui::GetFontSize() / fontDefault->FontSize;
 
@@ -294,7 +294,7 @@ int main(int argc, char *argv[])
                     auto columns = (int)std::floor(std::max(1.0f, contentRegion.x / charWidth));
                     auto rows = (int)std::floor(std::max(1.0f, contentRegion.y / charHeight));
 
-                    terminal = Hexe::Terminal::ImGuiTerminal::Create(columns, rows, options.program, options.arguments, "", emojiFontData.empty() ? 0 : Hexe::Terminal::ImGuiTerminal::OPTION_COLOR_EMOJI);
+                    terminal = Hexe::Terminal::ImGuiTerminal::Create(columns, rows, options.program, options.arguments, "", emojiFontData.empty() ? 0 : Hexe::Terminal::ImGuiTerminalOptions::OPTION_COLOR_EMOJI | Hexe::Terminal::ImGuiTerminalOptions::OPTION_PASTE_CRLF);
                     terminal->SetFont(fontDefault, fontBold, fontItalic, fontBoldItalic);
                 }
                 if (!terminal || terminal->HasTerminated())

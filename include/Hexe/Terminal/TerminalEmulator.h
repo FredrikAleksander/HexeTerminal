@@ -37,45 +37,24 @@
 
 #include "Types.h"
 #include "TerminalDisplay.h"
-#include "PseudoTerminal.h"
-#include "../System/Process.h"
-
+#include "IPseudoTerminal.h"
+#include "../System/IProcess.h"
+#include <memory>
 #include <stdint.h>
 #include <sys/types.h>
 #ifdef WIN32
 #include <windows.h>
 #endif
 
-#ifdef WIN32
-using pid_t = HANDLE;
-#endif
-
-/* macros */
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
-#define MAX(a, b) ((a) < (b) ? (b) : (a))
-#define LEN(a) (sizeof(a) / sizeof(a)[0])
-#define BETWEEN(x, a, b) ((a) <= (x) && (x) <= (b))
-#define DIVCEIL(n, d) (((n) + ((d)-1)) / (d))
-#define DEFAULT(a, b) (a) = (a) ? (a) : (b)
-#define LIMIT(x, a, b) (x) = (x) < (a) ? (a) : (x) > (b) ? (b) : (x)
-#define ATTRCMP(a, b) ((a).mode != (b).mode || (a).fg != (b).fg || \
-                       (a).bg != (b).bg)
-#define TIMEDIFF(t1, t2) ((t1.tv_sec - t2.tv_sec) * 1000 + \
-                          (t1.tv_nsec - t2.tv_nsec) / 1E6)
-#define MODBIT(x, set, bit) ((set) ? ((x) |= (bit)) : ((x) &= ~(bit)))
-
-#define TRUECOLOR(r, g, b) (1 << 24 | (r) << 16 | (g) << 8 | (b))
-#define IS_TRUECOL(x) (1 << 24 & (x))
-
-#define ESC_BUF_SIZ 512
-#define ESC_ARG_SIZ 16
-#define STR_BUF_SIZ ESC_BUF_SIZ
-#define STR_ARG_SIZ ESC_ARG_SIZ
-
 namespace Hexe
 {
     namespace Terminal
     {
+        constexpr int ESC_BUF_SIZ = 512;
+        constexpr int ESC_ARG_SIZ = 16;
+        constexpr int STR_BUF_SIZ = ESC_BUF_SIZ;
+        constexpr int STR_ARG_SIZ = ESC_ARG_SIZ;
+
         /* Internal representation of the screen */
         typedef struct
         {
@@ -129,8 +108,8 @@ namespace Hexe
         {
         public:
             using DpyPtr = std::weak_ptr<TerminalDisplay>;
-            using PtyPtr = std::unique_ptr<PseudoTerminal>;
-            using ProcPtr = std::unique_ptr<System::Process>;
+            using PtyPtr = std::unique_ptr<IPseudoTerminal>;
+            using ProcPtr = std::unique_ptr<System::IProcess>;
 
         private:
             DpyPtr m_dpy;
@@ -147,7 +126,7 @@ namespace Hexe
                 TERMINATED
             } m_status;
 
-            char m_buf[2048];
+            char m_buf[8192];
             int m_buflen;
 
         private:
@@ -241,6 +220,7 @@ namespace Hexe
 
             void resettitle();
 
+        public:
             void selclear();
             void selinit();
             void selstart(int, int, int);

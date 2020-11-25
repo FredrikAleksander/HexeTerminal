@@ -23,6 +23,8 @@
 #include "Hexe/Terminal/TerminalEmulator.h"
 #include <assert.h>
 
+#define MODBIT(x, set, bit) ((set) ? ((x) |= (bit)) : ((x) &= ~(bit)))
+
 using namespace Hexe::Terminal;
 
 TerminalDisplay::TerminalDisplay()

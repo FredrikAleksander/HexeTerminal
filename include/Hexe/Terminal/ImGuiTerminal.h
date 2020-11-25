@@ -23,6 +23,7 @@
 
 #include "Hexe/Terminal/TerminalDisplay.h"
 #include "Hexe/Terminal/TerminalEmulator.h"
+#include "Hexe/System/IProcessFactory.h"
 #include <memory>
 #include <string>
 #include <utility>
@@ -36,6 +37,20 @@ namespace Hexe
         {
             PASTE
         };
+
+        enum ImGuiTerminalOptions
+        {
+            OPTION_NONE = 0,
+            OPTION_COLOR_EMOJI = 1 << 0,
+            OPTION_NO_BOXDRAWING = 1 << 1,
+            OPTION_PASTE_CRLF = 1 << 2
+        };
+
+        struct ImGuiTerminalConfig
+        {
+            int options;
+        };
+
         class ImGuiTerminal : public Hexe::Terminal::TerminalDisplay
         {
         private:
@@ -51,6 +66,7 @@ namespace Hexe
             uint32_t m_flags;
             bool m_useBoxDrawing;
             bool m_useColorEmoji;
+            bool m_pasteNewlineFix;
             double m_elapsedTime;
             double m_lastBlink;
 
@@ -59,25 +75,27 @@ namespace Hexe
             ImFont *m_italicFont;
             ImFont *m_boldItalicFont;
 
+            struct
+            {
+                int sx;
+                int sy;
+                bool buttonDown[5];
+            } m_mouseState;
+
             std::string m_title;
             ImVector<Hexe::Terminal::Glyph> m_buffer;
             ImVector<std::pair<ImU32, std::string>> m_colors;
             std::shared_ptr<Hexe::Terminal::TerminalEmulator> m_terminal;
+            mutable std::string m_clipboardLast;
 
         private:
             void DrawImGui(ImDrawList *draw_list, ImVec2 pos, float scale, const ImVec4 &clip_rect);
-            void Draw(ImDrawList *draw_list, ImVec2 pos, float scale, const ImVec4 &clip_rect);
-            void ProcessInput();
+            void Draw(ImDrawList *draw_list, ImVec2 pos, float scale, const ImVec4 &clip_rect, bool hasFocus);
+            void ProcessInput(int mousecx, int mousecy);
+            void MouseReport(int cx, int cy, int button, int state, int type);
             void Action(ShortcutAction action);
 
-            ImGuiTerminal(int columns, int rows);
-
-        public:
-            enum Options
-            {
-                OPTION_NONE = 0,
-                OPTION_COLOR_EMOJI
-            };
+            ImGuiTerminal(int columns, int rows, ImGuiTerminalConfig *config);
 
         public:
             bool HasTerminated() const;
@@ -87,6 +105,9 @@ namespace Hexe
 
             virtual void SetTitle(const char *title) override;
             virtual const std::string &GetTitle() const;
+
+            virtual void SetClipboard(const char *text);
+            virtual const char *GetClipboard() const;
 
             virtual void SetFont(ImFont *regular, ImFont *bold = nullptr, ImFont *italic = nullptr, ImFont *boldItalic = nullptr);
             inline ImFont *GetFont() const { return m_defaultFont; }
@@ -102,7 +123,8 @@ namespace Hexe
             virtual void Update();
             void Draw(const ImVec4 &contentArea, float scale = 1.0f);
 
-            static std::shared_ptr<ImGuiTerminal> Create(int columns, int rows, const std::string &program, const ImVector<std::string> &args, const std::string &workingDir, uint32_t options = 0);
+            static std::shared_ptr<ImGuiTerminal> Create(std::shared_ptr<Hexe::Terminal::TerminalEmulator> &&terminalEmulator, ImGuiTerminalConfig *config = 0);
+            static std::shared_ptr<ImGuiTerminal> Create(int columns, int rows, const std::string &program, const ImVector<std::string> &args, const std::string &workingDir, uint32_t options = 0, System::IProcessFactory *processFactory = nullptr);
         };
     } // namespace Terminal
 } // namespace Hexe

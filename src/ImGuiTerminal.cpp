@@ -23,6 +23,8 @@
 #include "Hexe/Terminal/ImGuiTerminal.h"
 #include "Hexe/Terminal/Boxdraw.h"
 #include "Hexe/System/Process.h"
+#include "Hexe/System/ProcessFactory.h"
+//#include "Macros.h"
 #include "ImGuiTerminal.colors.h"
 #include "ImGuiTerminal.keys.h"
 #include "imgui_internal.h"
@@ -31,6 +33,10 @@
 #undef min
 #undef max
 
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MAX(a, b) ((a) < (b) ? (b) : (a))
+#define LEN(a) (sizeof(a) / sizeof(a)[0])
+#define BETWEEN(x, a, b) ((a) <= (x) && (x) <= (b))
 #define IS_SET(flag) ((m_mode & (flag)) != 0)
 #define DIV(n, d) (((n) + (d) / 2.0f) / (d))
 #define DIVI(n, d) (((n) + (d) / 2) / (d))
@@ -234,8 +240,8 @@ static inline ImU32 GetCol(unsigned int terminalColor, const ImVector<std::pair<
     return IM_COL32((terminalColor >> 16) & 0xFF, (terminalColor >> 8) & 0xFF, terminalColor & 0xFF, (~((terminalColor >> 25) & 0xFF)) & 0xFF);
 }
 
-ImGuiTerminal::ImGuiTerminal(int columns, int rows)
-    : m_borderpx(1.0f), m_cursorthickness(2.0f), m_cursorx(0), m_cursory(0), m_cursorg({}), m_columns(columns), m_rows(rows), m_dirty(true), m_checkDirty(false), m_flags(0), m_useBoxDrawing(true), m_useColorEmoji(true), m_elapsedTime(0.0), m_lastBlink(0.0), m_defaultFont(nullptr), m_boldFont(nullptr), m_italicFont(nullptr), m_boldItalicFont(nullptr)
+ImGuiTerminal::ImGuiTerminal(int columns, int rows, ImGuiTerminalConfig *config)
+    : m_borderpx(1.0f), m_cursorthickness(2.0f), m_cursorx(0), m_cursory(0), m_cursorg({}), m_columns(columns), m_rows(rows), m_dirty(true), m_checkDirty(false), m_flags(0), m_useBoxDrawing(true), m_useColorEmoji(false), m_pasteNewlineFix(false), m_elapsedTime(0.0), m_lastBlink(0.0), m_defaultFont(nullptr), m_boldFont(nullptr), m_italicFont(nullptr), m_boldItalicFont(nullptr)
 {
     Hexe::Terminal::Glyph defaultGlyph;
     defaultGlyph.mode = ATTR_INVISIBLE;
@@ -244,17 +250,85 @@ ImGuiTerminal::ImGuiTerminal(int columns, int rows)
     m_colors.resize(LEN(colornames), defaultColor);
     m_buffer.resize(m_columns * m_rows, defaultGlyph);
     ((int &)m_mode) |= MODE_FOCUSED;
+
+    memset(&m_mouseState, 0, sizeof(m_mouseState));
+
+    if (config != nullptr)
+    {
+        if (config->options & OPTION_COLOR_EMOJI)
+            m_useColorEmoji = true;
+        if (config->options & OPTION_NO_BOXDRAWING)
+            m_useBoxDrawing = false;
+        if (config->options & OPTION_PASTE_CRLF)
+            m_pasteNewlineFix = true;
+    }
 }
 
 void ImGuiTerminal::Update()
 {
-
     m_terminal->Update();
 }
 
-void ImGuiTerminal::ProcessInput()
+void ImGuiTerminal::MouseReport(int x, int y, int button, int state, int type)
+{
+    if (button != 0)
+    {
+        return;
+    }
+
+    if (type == 1)
+    {
+        int tx = x;
+        int ty = y;
+        m_terminal->selextend(x, y, ImGui::GetIO().KeyMods == ImGuiKeyModFlags_Shift ? SEL_RECTANGULAR : SEL_REGULAR, 0);
+    }
+    else
+    {
+        if (state == 1)
+        {
+            m_mouseState.sx = x;
+            m_mouseState.sy = y;
+            m_terminal->selstart(x, y, 0);
+        }
+        else
+        {
+            auto selection = m_terminal->getsel();
+            SetClipboard(selection);
+            m_terminal->selclear();
+        }
+    }
+}
+
+void ImGuiTerminal::ProcessInput(int mouse_column, int mouse_row)
 {
     auto &io = ImGui::GetIO();
+
+    bool isHovered = ImGui::IsItemHovered();
+
+    for (int i = 0; i < 5; i++)
+    {
+        if (m_mouseState.buttonDown[i] != io.MouseDown[i])
+        {
+            if (io.MouseDown[i])
+            {
+                if (io.MouseDownDuration[i] == 0.0f && isHovered)
+                {
+                    m_mouseState.buttonDown[i] = true;
+                    MouseReport(mouse_column, mouse_row, i, 1, 0);
+                }
+            }
+            else
+            {
+                m_mouseState.buttonDown[i] = false;
+                MouseReport(mouse_column, mouse_row, i, 0, 0);
+            }
+        }
+        else if (m_mouseState.buttonDown[i])
+        {
+            // Update motion
+            MouseReport(mouse_column, mouse_row, i, 1, 1);
+        }
+    }
 
     auto keyModFlags = io.KeyMods;
 
@@ -358,13 +432,36 @@ void ImGuiTerminal::Action(ShortcutAction action)
 {
     if (action == ShortcutAction::PASTE)
     {
-        auto clipboard = ImGui::GetClipboardText();
+        auto clipboard = GetClipboard();
         auto clipboardLen = strlen(clipboard);
         if (clipboardLen > 0)
         {
             m_terminal->Write(clipboard, clipboardLen);
         }
     }
+}
+
+void ImGuiTerminal::SetClipboard(const char *text)
+{
+    ImGui::SetClipboardText(text);
+}
+
+const char *ImGuiTerminal::GetClipboard() const
+{
+#ifdef WIN32
+    if (m_pasteNewlineFix)
+    {
+        std::string input = ImGui::GetClipboardText();
+        decltype(input.find('\r')) pos;
+        while ((pos = input.find('\r')) != std::string::npos)
+        {
+            input.erase(pos, 1);
+        }
+        m_clipboardLast = std::move(input);
+        return m_clipboardLast.c_str();
+    }
+#endif
+    return ImGui::GetClipboardText();
 }
 
 bool ImGuiTerminal::HasTerminated() const
@@ -462,6 +559,13 @@ void ImGuiTerminal::DrawLine(Hexe::Terminal::Line line, int x1, int y, int x2)
 {
     m_checkDirty = true;
     memcpy(&m_buffer[y * m_columns + x1], line, (x2 - x1) * sizeof(Glyph));
+    for (int i = x1; i < x2; i++)
+    {
+        if (m_terminal->selected(i, y))
+        {
+            m_buffer[y * m_columns + i].mode |= ATTR_REVERSE;
+        }
+    }
 }
 
 void ImGuiTerminal::DrawCursor(int cx, int cy, Hexe::Terminal::Glyph g, int ox, int oy, Hexe::Terminal::Glyph og)
@@ -485,7 +589,7 @@ void ImGuiTerminal::SetFont(ImFont *regular, ImFont *bold, ImFont *italic, ImFon
     m_boldItalicFont = boldItalic;
 }
 
-void ImGuiTerminal::Draw(ImDrawList *draw_list, ImVec2 pos, float scale, const ImVec4 &clip_rect)
+void ImGuiTerminal::Draw(ImDrawList *draw_list, ImVec2 pos, float scale, const ImVec4 &clip_rect, bool hasFocus)
 {
     if (m_defaultFont == nullptr)
     {
@@ -519,6 +623,8 @@ void ImGuiTerminal::Draw(ImDrawList *draw_list, ImVec2 pos, float scale, const I
         pos.y = std::floor(pos.y + ((clipHeight - height) / 2.0f));
     }
 
+    ImGui::ItemAdd(ImRect{pos, ImVec2{pos.x + clipWidth, pos.y + clipHeight}}, ImGui::GetID("TermIO"));
+
     ImDrawList *drawList = ImGui::GetWindowDrawList();
 
     draw_list->AddRectFilled(ImVec2(clip_rect.x, clip_rect.y), ImVec2(clip_rect.z, clip_rect.w), GetCol(m_emulator->GetDefaultBackground(), m_colors), 0.0f, ImDrawCornerFlags_None);
@@ -528,6 +634,27 @@ void ImGuiTerminal::Draw(ImDrawList *draw_list, ImVec2 pos, float scale, const I
     if (clipColumns != m_terminal->GetNumColumns() || clipRows != m_terminal->GetNumRows())
     {
         m_terminal->Resize(clipColumns, clipRows);
+    }
+
+    if (hasFocus)
+    {
+        auto mousePos = ImGui::GetMousePos();
+        auto relPos = ImVec2{mousePos.x - pos.x, mousePos.y - pos.y};
+        int mouseX = 0;
+        int mouseY = 0;
+
+        if (mousePos.x <= 0.0f || mousePos.y <= 0.0f)
+        {
+            mouseX = 0;
+            mouseY = 0;
+        }
+        else if (relPos.x >= 0.0f && relPos.y >= 0.0f)
+        {
+            mouseX = ImClamp((int)std::floor(relPos.x / advanceX), 0, clipColumns);
+            mouseY = ImClamp((int)std::floor(relPos.y / fontSize), 0, clipRows);
+        }
+
+        ProcessInput(mouseX, mouseY);
     }
 }
 
@@ -541,7 +668,7 @@ void ImGuiTerminal::DrawImGui(ImDrawList *draw_list, ImVec2 pos, float scale, co
     auto spaceChar = font->FindGlyph('A');
     auto spaceCharAdvanceX = spaceChar->AdvanceX * scale;
 
-    const float line_height = (fontSize * scale);
+    const float line_height = fontSize * scale;
 
     float x = 0.0f;
     float y = std::floor(pos.y);
@@ -979,36 +1106,47 @@ void ImGuiTerminal::Draw(const ImVec4 &contentArea, float scale)
     }
 
     auto *drawList = ImGui::GetWindowDrawList();
-    Draw(drawList, ImVec2(contentArea.x, contentArea.y), scale, contentArea);
-
-    if (hasFocus)
-    {
-        ProcessInput();
-    }
+    Draw(drawList, ImVec2(contentArea.x, contentArea.y), scale, contentArea, hasFocus);
 }
 
-std::shared_ptr<ImGuiTerminal> ImGuiTerminal::Create(int columns, int rows, const std::string &program, const ImVector<std::string> &args, const std::string &workingDir, uint32_t options)
+std::shared_ptr<ImGuiTerminal> ImGuiTerminal::Create(std::shared_ptr<Hexe::Terminal::TerminalEmulator> &&terminalEmulator, ImGuiTerminalConfig *config)
+{
+    std::shared_ptr<ImGuiTerminal> terminal = std::shared_ptr<ImGuiTerminal>(new ImGuiTerminal(terminalEmulator->GetNumColumns(), terminalEmulator->GetNumRows(), config));
+    terminal->m_terminal = std::move(terminalEmulator);
+    return terminal;
+}
+
+static Hexe::System::IProcessFactory *g_processFactory = new Hexe::System::ProcessFactory();
+
+std::shared_ptr<ImGuiTerminal> ImGuiTerminal::Create(int columns, int rows, const std::string &program, const ImVector<std::string> &args, const std::string &workingDir, uint32_t options, System::IProcessFactory *processFactory)
 {
     using namespace Hexe::System;
 
-    auto pseudoTerminal = PseudoTerminal::Create(columns, rows);
+    ImGuiTerminalConfig config{};
+    config.options = options;
+
+    if (processFactory == nullptr)
+    {
+        processFactory = g_processFactory;
+    }
+
+    std::unique_ptr<IPseudoTerminal> pseudoTerminal = nullptr;
+    std::vector<std::string> argsV(args.begin(), args.end());
+    auto process = processFactory->CreateWithPseudoTerminal(program, argsV, workingDir, columns, rows, pseudoTerminal);
+
     if (!pseudoTerminal)
     {
         fprintf(stderr, "Failed to create pseudo terminal\n");
         return nullptr;
     }
 
-    std::vector<std::string> argsV(args.begin(), args.end());
-
-    auto process = System::Process::CreateWithPseudoTerminal(program, argsV, workingDir, *pseudoTerminal);
     if (!process)
     {
         fprintf(stderr, "Failed to spawn process\n");
         return nullptr;
     }
 
-    std::shared_ptr<ImGuiTerminal> terminal = std::shared_ptr<ImGuiTerminal>(new ImGuiTerminal(columns, rows));
-    terminal->m_useColorEmoji = options & OPTION_COLOR_EMOJI;
+    std::shared_ptr<ImGuiTerminal> terminal = std::shared_ptr<ImGuiTerminal>(new ImGuiTerminal(columns, rows, &config));
     terminal->m_terminal = TerminalEmulator::Create(std::move(pseudoTerminal), std::move(process), terminal);
     return terminal;
 }

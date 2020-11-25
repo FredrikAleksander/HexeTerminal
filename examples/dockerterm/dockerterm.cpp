@@ -4,12 +4,84 @@
 #include <fstream>
 #define IMGUI_IMPL_OPENGL_LOADER_GLEW
 #include "../imgui_freetype_ex.h"
+#include "Hexe/System/ProcessFactory.h"
 #include "Hexe/Terminal/ImGuiTerminal.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl.h"
 
 #undef max
 #undef min
+
+using namespace Hexe::System;
+
+// This is a very simple demonstration of a ProcessFactory implementation which
+// runs processes inside a docker container. This more explanatory than useful.
+// A real world scenario would probably support more advanced options like
+// mounting volumes for persistence etc, but it is simple enough to demonstrate
+// the basics. A more advanced implementation of the IProcessFactory would be a
+// implementation that uses libssh2 to connect to a SSH server. That would
+// require a custom implementation of both IProcess and IPseudoTerminal in
+// addition to IProcessFactory
+class DockerProcessFactory : public Hexe::System::IProcessFactory {
+private:
+  Hexe::System::IProcessFactory *hostProcessFactory;
+  std::string container;
+
+public:
+  DockerProcessFactory(const std::string &container) {
+    hostProcessFactory = new ProcessFactory();
+    this->container = container.empty() ? "alpine:latest" : container;
+  }
+  virtual ~DockerProcessFactory() { delete hostProcessFactory; }
+  DockerProcessFactory(const DockerProcessFactory &) = delete;
+  DockerProcessFactory(DockerProcessFactory &&) = delete;
+  DockerProcessFactory &operator=(const DockerProcessFactory &) = delete;
+  DockerProcessFactory &operator=(DockerProcessFactory &&) = delete;
+
+  virtual std::unique_ptr<IProcess> CreateWithStdioPipe(
+      const std::string &program, const std::vector<std::string> &args,
+      const std::string &workingDirectory, std::unique_ptr<IPipe> &outPipe,
+      bool withStderr = true) override {
+    std::vector<std::string> argsV;
+
+    argsV.push_back("run");
+
+    if (!workingDirectory.empty()) {
+      argsV.push_back("-w=\"" + workingDirectory + "\"");
+    }
+
+    argsV.push_back(container);
+
+    argsV.push_back(program);
+    argsV.insert(argsV.end(), args.begin(), args.end());
+
+    return hostProcessFactory->CreateWithStdioPipe("docker", argsV, "", outPipe,
+                                                   withStderr);
+  }
+
+  virtual std::unique_ptr<IProcess> CreateWithPseudoTerminal(
+      const std::string &program, const std::vector<std::string> &args,
+      const std::string &workingDirectory, int numColumns, int numRows,
+      std::unique_ptr<Hexe::Terminal::IPseudoTerminal> &outPseudoTerminal)
+      override {
+    std::vector<std::string> argsV;
+
+    argsV.push_back("run");
+    argsV.push_back("-it");
+
+    if (!workingDirectory.empty()) {
+      argsV.push_back("-w=\"" + workingDirectory + "\"");
+    }
+
+    argsV.push_back(container);
+
+    argsV.push_back(program);
+    argsV.insert(argsV.end(), args.begin(), args.end());
+
+    return hostProcessFactory->CreateWithPseudoTerminal(
+        "docker", argsV, "", numColumns, numRows, outPseudoTerminal);
+  }
+};
 
 static void LoadEmojiFont(ImVector<unsigned char> &emojiBuffer) {
 
@@ -60,7 +132,7 @@ int main(int argc, char *argv[]) {
         (SDL_WindowFlags)(window_flags | SDL_WINDOW_FULLSCREEN_DESKTOP);
   }
   SDL_Window *window = SDL_CreateWindow(
-      "Simple Example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+      "Docker Terminal Example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
       windowWidth, windowHeight, window_flags);
   SDL_GLContext gl_context = SDL_GL_CreateContext(window);
   SDL_GL_MakeCurrent(window, gl_context);
@@ -83,13 +155,7 @@ int main(int argc, char *argv[]) {
   ImGui::StyleColorsDark();
 
   ImFontConfig cfg{};
-  // cfg.SizePixels = 26;
-  // cfg.OversampleH = 1;
-  // cfg.OversampleV = 1;
   cfg.RasterizerFlags = ImGuiFreeTypeEx::EmbedEmoji;
-  // auto fontDefault = io.Fonts->AddFontFromFileTTF(options.font.c_str(),
-  // options.fontSize != 0.0f ? options.fontSize : 23.0f, &cfg,
-  // glyphRanges.Data);
   auto fontDefault = io.Fonts->AddFontDefault(&cfg);
 
   ImVector<unsigned char> emojiFontData{};
@@ -109,6 +175,8 @@ int main(int argc, char *argv[]) {
   std::shared_ptr<Hexe::Terminal::ImGuiTerminal> terminal = nullptr;
 
   ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+
+  DockerProcessFactory processFactory{""};
 
   while (!exitRequested) {
     SDL_Event event;
@@ -155,17 +223,16 @@ int main(int argc, char *argv[]) {
       ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{});
       ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{});
 
-      if (ImGui::Begin("Terminal", &showTerminalWindow,
-                       ImGuiWindowFlags_NoMove)) {
+      if (ImGui::Begin("Terminal", &showTerminalWindow)) {
         auto scale = ImGui::GetFontSize() / fontDefault->FontSize;
 
         auto contentRegion = ImGui::GetContentRegionAvail();
         auto contentPos = ImGui::GetCursorScreenPos();
 
-        if (!terminal || terminal->HasTerminated()) {
+        if (!terminal) {
           auto spacingChar = fontDefault->FindGlyph('A');
           auto charWidth = spacingChar->AdvanceX * scale;
-          auto charHeight = fontDefault->FontSize * scale;
+          auto charHeight = ImGui::GetTextLineHeightWithSpacing();
 
           auto columns =
               (int)std::floor(std::max(1.0f, contentRegion.x / charWidth));
@@ -173,10 +240,13 @@ int main(int argc, char *argv[]) {
               (int)std::floor(std::max(1.0f, contentRegion.y / charHeight));
 
           terminal = Hexe::Terminal::ImGuiTerminal::Create(
-              columns, rows, "cmd.exe", {}, "",
+              columns, rows, "/bin/ash", {}, "",
               emojiFontData.empty()
                   ? 0
-                  : Hexe::Terminal::ImGuiTerminalOptions::OPTION_COLOR_EMOJI);
+                  : Hexe::Terminal::ImGuiTerminalOptions::OPTION_COLOR_EMOJI,
+              &processFactory);
+        } else if (terminal->HasTerminated()) {
+          terminal = nullptr;
         }
         if (!terminal)
           exitRequested = true;

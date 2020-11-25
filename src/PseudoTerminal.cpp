@@ -36,90 +36,82 @@ using namespace Hexe::Terminal;
 PseudoTerminal::~PseudoTerminal() {}
 PseudoTerminal::PseudoTerminal(int columns, int rows, AutoHandle &&master,
                                AutoHandle &&slave)
-    : m_columns(columns), m_rows(rows), m_master(std::move(master)), m_slave(std::move(slave)) {}
+    : m_columns(columns), m_rows(rows), m_master(std::move(master)),
+      m_slave(std::move(slave)) {}
 
-bool PseudoTerminal::Resize(int columns, int rows)
-{
-    struct winsize w;
+bool PseudoTerminal::IsTTY() const { return true; }
 
-    w.ws_row = rows;
-    w.ws_col = columns;
-    w.ws_xpixel = 0;
-    w.ws_ypixel = 0;
+bool PseudoTerminal::Resize(int columns, int rows) {
+  struct winsize w;
 
-    if (ioctl((int)m_master, TIOCSWINSZ, &w) < 0)
-    {
-        perror("PseudoTerminal::Resize");
-        return false;
-    }
+  w.ws_row = rows;
+  w.ws_col = columns;
+  w.ws_xpixel = 0;
+  w.ws_ypixel = 0;
 
-    return true;
+  if (ioctl((int)m_master, TIOCSWINSZ, &w) < 0) {
+    perror("PseudoTerminal::Resize");
+    return false;
+  }
+
+  return true;
 }
 
 int PseudoTerminal::GetNumColumns() const { return m_columns; }
 
 int PseudoTerminal::GetNumRows() const { return m_rows; }
 
-int PseudoTerminal::Write(const char *s, size_t n)
-{
-    size_t c = n;
-    while (n > 0)
-    {
-        ssize_t r = write((int)m_master, s, n);
-        if (r < 0)
-        {
-            return -1;
-        }
-        n -= r;
-        s += r;
+int PseudoTerminal::Write(const char *s, size_t n) {
+  size_t c = n;
+  while (n > 0) {
+    ssize_t r = write((int)m_master, s, n);
+    if (r < 0) {
+      return -1;
     }
-    return c;
+    n -= r;
+    s += r;
+  }
+  return c;
 }
 
-int PseudoTerminal::Read(char *s, size_t n, bool block)
-{
-    struct pollfd pfd;
-    pfd.fd = (int)m_master;
-    pfd.events = POLLIN;
-    pfd.revents = 0;
+int PseudoTerminal::Read(char *s, size_t n, bool block) {
+  struct pollfd pfd;
+  pfd.fd = (int)m_master;
+  pfd.events = POLLIN;
+  pfd.revents = 0;
 
-    if (!block)
-    {
-        auto i = poll(&pfd, 1, 0);
-        if (i == 0 || !(pfd.revents & POLLIN))
-        {
-            return 0;
-        }
-        if (i < 0)
-        {
-            perror("PseudoTerminal::Reader(poll)");
-            return -1;
-        }
+  if (!block) {
+    auto i = poll(&pfd, 1, 0);
+    if (i == 0 || !(pfd.revents & POLLIN)) {
+      return 0;
     }
-    ssize_t r = read((int)m_master, s, n);
-    return (int)r;
+    if (i < 0) {
+      perror("PseudoTerminal::Reader(poll)");
+      return -1;
+    }
+  }
+  ssize_t r = read((int)m_master, s, n);
+  return (int)r;
 }
 
-std::unique_ptr<PseudoTerminal> PseudoTerminal::Create(int columns, int rows)
-{
-    AutoHandle master;
-    AutoHandle slave;
+std::unique_ptr<PseudoTerminal> PseudoTerminal::Create(int columns, int rows) {
+  AutoHandle master;
+  AutoHandle slave;
 
-    struct winsize win;
+  struct winsize win;
 
-    memset(&win, 0, sizeof(win));
+  memset(&win, 0, sizeof(win));
 
-    win.ws_col = columns;
-    win.ws_row = rows;
+  win.ws_col = columns;
+  win.ws_row = rows;
 
-    if (openpty(master.Get(), slave.Get(), nullptr, NULL, &win) != 0)
-    {
-        perror("PseudoTerminal::Create(openpty)");
-        return nullptr;
-    }
+  if (openpty(master.Get(), slave.Get(), nullptr, NULL, &win) != 0) {
+    perror("PseudoTerminal::Create(openpty)");
+    return nullptr;
+  }
 
-    return std::unique_ptr<PseudoTerminal>(
-        new PseudoTerminal(columns, rows, std::move(master), std::move(slave)));
+  return std::unique_ptr<PseudoTerminal>(
+      new PseudoTerminal(columns, rows, std::move(master), std::move(slave)));
 }
 
 #endif

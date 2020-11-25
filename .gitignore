@@ -1,0 +1,8 @@
+.cache
+.vimproject
+build/
+build_linux/
+build_wsl/
+build_wsl-release/
+build_wsl-debug/
+compile_commands.json

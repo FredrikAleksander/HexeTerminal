@@ -11,5 +11,6 @@ set(EXAMPLE_SOURCES ${EXAMPLE_SOURCES}
     "${imgui_SOURCE_DIR}/examples/imgui_impl_sdl.cpp"
 )
 
+add_subdirectory(dockerterm)
 add_subdirectory(simple)
 add_subdirectory(terminal)

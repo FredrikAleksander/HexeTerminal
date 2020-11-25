@@ -21,8 +21,8 @@
 //  DEALINGS IN THE SOFTWARE.
 #pragma once
 
+#include "Hexe/System/IPipe.h"
 #include "Hexe/AutoHandle.h"
-#include "IPseudoTerminal.h"
 #include <memory>
 
 namespace Hexe
@@ -30,50 +30,33 @@ namespace Hexe
     namespace System
     {
         class Process;
-    }
-    namespace Terminal
-    {
-        class PseudoTerminal final : public IPseudoTerminal
+        class Pipe : public IPipe
         {
         private:
-            friend class ::Hexe::System::Process;
+            friend class Process;
 #ifdef WIN32
-            COORD m_size;
-
             AutoHandle m_hInput;
             AutoHandle m_hOutput;
-            HPCON m_phPC;
 
-            bool m_attached;
-
-            PseudoTerminal(int columns, int rows, AutoHandle &&hInput, AutoHandle &&hOutput, HPCON hPC);
+            Pipe(AutoHandle &&readHandle, AutoHandle &&writeHandle);
 #else
-            int m_columns;
-            int m_rows;
+            AutoHandle m_handle;
 
-            AutoHandle m_master;
-            AutoHandle m_slave;
-
-            PseudoTerminal(int columns, int rows, AutoHandle &&master, AutoHandle &&slave);
+            Pipe(AutoHandle &&handle);
 #endif
         public:
-            virtual ~PseudoTerminal();
-
-            PseudoTerminal(PseudoTerminal &&) = delete;
-            PseudoTerminal(const PseudoTerminal &) = delete;
-            PseudoTerminal &operator=(PseudoTerminal &&) = delete;
-            PseudoTerminal &operator=(const PseudoTerminal &) = delete;
+            Pipe(Pipe &&) = delete;
+            Pipe(const Pipe &) = delete;
+            Pipe &operator=(Pipe &&) = delete;
+            Pipe &operator=(const Pipe &) = delete;
+            virtual ~Pipe() = default;
 
             virtual bool IsTTY() const override;
 
-            virtual int GetNumColumns() const override;
-            virtual int GetNumRows() const override;
-
-            virtual bool Resize(int columns, int rows) override;
             virtual int Write(const char *s, size_t n) override;
             virtual int Read(char *buf, size_t n, bool block = false) override;
 
-            static std::unique_ptr<PseudoTerminal> Create(int columns, int rows);
+            static bool CreatePipePair(std::unique_ptr<Pipe> &outPipeA, std::unique_ptr<Pipe> &outPipeB);
         };
-    } // namespace Terminal
+    } // namespace System
 } // namespace Hexe

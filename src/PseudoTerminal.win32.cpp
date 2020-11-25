@@ -39,6 +39,11 @@ PseudoTerminal::PseudoTerminal(int columns, int rows, AutoHandle &&hInput, AutoH
     m_size.Y = (SHORT)rows;
 }
 
+bool PseudoTerminal::IsTTY() const
+{
+    return true;
+}
+
 bool PseudoTerminal::Resize(int columns, int rows)
 {
     HRESULT hr = ResizePseudoConsole(m_phPC, {(SHORT)columns, (SHORT)rows});

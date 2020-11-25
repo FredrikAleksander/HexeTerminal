@@ -34,6 +34,8 @@
 //  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 //  DEALINGS IN THE SOFTWARE.
 #include "Hexe/Terminal/TerminalEmulator.h"
+#include "boxdraw_data.h"
+#include "emoji_blocks.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -47,6 +49,23 @@
 #include <signal.h>
 #include <sys/types.h>
 #include "config.def.h"
+#include <cmath>
+
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MAX(a, b) ((a) < (b) ? (b) : (a))
+#define LEN(a) (sizeof(a) / sizeof(a)[0])
+#define BETWEEN(x, a, b) ((a) <= (x) && (x) <= (b))
+#define DIVCEIL(n, d) (((n) + ((d)-1)) / (d))
+#define DEFAULT(a, b) (a) = (a) ? (a) : (b)
+#define LIMIT(x, a, b) (x) = (x) < (a) ? (a) : (x) > (b) ? (b) : (x)
+#define ATTRCMP(a, b) ((a).mode != (b).mode || (a).fg != (b).fg || \
+                       (a).bg != (b).bg)
+#define TIMEDIFF(t1, t2) ((t1.tv_sec - t2.tv_sec) * 1000 + \
+                          (t1.tv_nsec - t2.tv_nsec) / 1E6)
+#define MODBIT(x, set, bit) ((set) ? ((x) |= (bit)) : ((x) &= ~(bit)))
+
+#define TRUECOLOR(r, g, b) (1 << 24 | (r) << 16 | (g) << 8 | (b))
+#define IS_TRUECOL(x) (1 << 24 & (x))
 
 /* Arbitrary sizes */
 #define UTF_INVALID 0xFFFD
@@ -61,33 +80,31 @@
 
 using namespace Hexe::Terminal;
 
+static inline bool is_emoji_presentation(int32_t code)
+{
+    const emoji_range_t **curr = emoji_ranges;
+    while (*curr != 0)
+    {
+        if (code >= (*curr)->min_code && code <= (*curr)->max_code)
+        {
+            int ofs = code - (*curr)->min_code;
+
+            int byteOffset = ofs / 8;
+            int bit = 1 << (ofs % 8);
+            auto byte = (*curr)->bitmap[byteOffset];
+
+            return ((*curr)->bitmap[byteOffset] & bit) == bit;
+        }
+        ++curr;
+    }
+    return false;
+}
+
 static inline bool
 is_emoji(int32_t code)
 {
-    if (code >= 0x1f600 && code <= 0x1F64F)
-    {
+    if (is_emoji_presentation(code))
         return true;
-    }
-    if (code >= 0x1F300 && code <= 0x1F5FF)
-    {
-        return true;
-    }
-    if (code >= 0x1FA70 && code <= 0x1FAFF)
-    {
-        return true;
-    }
-    if (code >= 0x1F900 && code <= 0x1F9FF)
-    {
-        return true;
-    }
-    if (code >= 0x1F680 && code <= 0x1F6FF)
-    {
-        return true;
-    }
-    if (code == 0x1F004)
-    {
-        return true;
-    }
     return false;
 }
 
@@ -113,6 +130,24 @@ static const uchar utfbyte[UTF_SIZ + 1] = {0x80, 0, 0xC0, 0xE0, 0xF0};
 static const uchar utfmask[UTF_SIZ + 1] = {0xC0, 0x80, 0xE0, 0xF0, 0xF8};
 static const Rune utfmin[UTF_SIZ + 1] = {0, 0, 0x80, 0x800, 0x10000};
 static const Rune utfmax[UTF_SIZ + 1] = {0x10FFFF, 0x7F, 0x7FF, 0xFFFF, 0x10FFFF};
+
+int Hexe::Terminal::isboxdraw(Rune u)
+{
+    Rune block = u & ~0xff;
+    return (block == 0x2500 && boxdata[u & 0xFF]) ||
+           (block == 0x2800);
+}
+
+/* the "index" is actually the entire shape data encoded as ushort */
+ushort
+Hexe::Terminal::boxdrawindex(const Glyph *g)
+{
+    if ((g->u & ~0xff) == 0x2800)
+        return BRL | (g->u & 0xFF);
+    if ((g->mode & ATTR_BOLD))
+        return BDB | boxdata[g->u & 0xFF];
+    return boxdata[g->u & 0xFF];
+}
 
 static void *
 xmalloc(size_t len)
@@ -2495,7 +2530,7 @@ std::unique_ptr<TerminalEmulator> TerminalEmulator::Create(PtyPtr &&pty, ProcPtr
 }
 
 TerminalEmulator::TerminalEmulator(PtyPtr &&pty, ProcPtr &&process, const std::shared_ptr<TerminalDisplay> &display)
-    : m_dpy(display), m_pty(std::move(pty)), m_process(std::move(process)), m_colorsLoaded(false), m_exitCode(1), m_status(STARTING), m_buflen(0), defaultfg(7), defaultbg(0), defaultcs(7), defaultrcs(0), allowaltscreen(1), allowwindowops(0)
+    : m_dpy(display), m_pty(std::move(pty)), m_process(std::move(process)), m_colorsLoaded(false), m_exitCode(1), m_status(STARTING), m_buflen(0), defaultfg(7), defaultbg(0), defaultcs(7), defaultrcs(0), allowaltscreen(1), allowwindowops(1)
 {
     memset(m_buf, 0, sizeof(m_buf));
     memset(&term, 0, sizeof(term));

@@ -22,6 +22,7 @@
 
 #ifdef WIN32
 #include "Hexe/System/Process.h"
+#include "Hexe/System/Pipe.h"
 #include "WindowsErrors.h"
 #include <assert.h>
 #include <iomanip>
@@ -142,6 +143,90 @@ void Process::WaitForExit()
     {
         WaitForSingleObject((HANDLE)m_hProcess, INFINITE);
     }
+}
+
+std::unique_ptr<Process>
+Process::CreateWithPipe(const std::string &program,
+                        const std::vector<std::string> &args,
+                        const std::string &workingDirectory,
+                        std::unique_ptr<IPipe> &outPipe,
+                        bool withStderr)
+{
+    outPipe = nullptr;
+
+    SECURITY_ATTRIBUTES saAttr;
+    ZeroMemory(&saAttr, sizeof(saAttr));
+    saAttr.nLength = sizeof(saAttr);
+    saAttr.bInheritHandle = TRUE;
+    saAttr.lpSecurityDescriptor = NULL;
+
+    AutoHandle g_hChildStd_IN_Rd{};
+    AutoHandle g_hChildStd_IN_Wr{};
+    AutoHandle g_hChildStd_OUT_Rd{};
+    AutoHandle g_hChildStd_OUT_Wr{};
+
+    if (!CreatePipe(g_hChildStd_OUT_Rd.Get(), g_hChildStd_OUT_Wr.Get(), &saAttr, 0))
+    {
+        fprintf(stderr, "Failed to create pipe (Stdout)\n");
+        return nullptr;
+    }
+
+    if (!SetHandleInformation((HANDLE)g_hChildStd_OUT_Rd, HANDLE_FLAG_INHERIT, 0))
+    {
+        fprintf(stderr, "Failed to set handle information (Stdout)\n");
+        return nullptr;
+    }
+
+    if (!CreatePipe(g_hChildStd_IN_Rd.Get(), g_hChildStd_IN_Wr.Get(), &saAttr, 0))
+    {
+        fprintf(stderr, "Failed to create pipe (Stdin)\n");
+        return nullptr;
+    }
+
+    if (!SetHandleInformation((HANDLE)g_hChildStd_IN_Wr, HANDLE_FLAG_INHERIT, 0))
+    {
+        fprintf(stderr, "Failed to set handle information (Stdin)\n");
+        return nullptr;
+    }
+
+    PROCESS_INFORMATION piProcInfo;
+    STARTUPINFOW siStartInfo;
+
+    ZeroMemory(&piProcInfo, sizeof(PROCESS_INFORMATION));
+    ZeroMemory(&siStartInfo, sizeof(STARTUPINFOW));
+
+    siStartInfo.cb = sizeof(STARTUPINFOW);
+    siStartInfo.hStdError = withStderr ? (HANDLE)g_hChildStd_OUT_Wr : INVALID_HANDLE_VALUE;
+    siStartInfo.hStdOutput = (HANDLE)g_hChildStd_OUT_Wr;
+    siStartInfo.hStdInput = (HANDLE)g_hChildStd_IN_Rd;
+    siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
+
+    std::ostringstream oss;
+    oss << std::quoted(program);
+    for (auto &arg : args)
+    {
+        oss << ' ' << arg;
+    }
+    std::wstring commandLine = stringToWideString(oss.str());
+    // TODO: If workingDirectory is relative, make it absolute (relative to the
+    // current process working directory)
+    std::wstring workingDir = stringToWideString(workingDirectory);
+
+    if (CreateProcessW(NULL, (LPWSTR)commandLine.c_str(), NULL, NULL, TRUE, 0, NULL, workingDir.empty() ? NULL : workingDir.c_str(), &siStartInfo, &piProcInfo))
+    {
+        std::unique_ptr<Pipe> pipe = std::unique_ptr<Pipe>(new Pipe(std::move(g_hChildStd_OUT_Rd), std::move(g_hChildStd_IN_Wr)));
+        outPipe = std::move(pipe);
+
+        AutoHandle hProcess{piProcInfo.hProcess};
+        AutoHandle hThread{piProcInfo.hThread};
+
+        return std::unique_ptr<Process>(
+            new Process(std::move(hProcess), NULL));
+    }
+
+    PrintWinApiError(GetLastError());
+
+    return nullptr;
 }
 
 std::unique_ptr<Process>
