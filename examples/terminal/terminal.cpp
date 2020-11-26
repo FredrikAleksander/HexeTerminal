@@ -125,6 +125,7 @@ int main(int argc, char *argv[])
     SDL_GL_MakeCurrent(window, gl_context);
     SDL_GL_SetSwapInterval(1); // Enable vsync
 
+    glewExperimental = true;
     bool err = glewInit() != GLEW_OK;
     if (err)
     {
@@ -190,7 +191,7 @@ int main(int argc, char *argv[])
     else
     {
         cfg.RasterizerFlags = ImGuiFreeTypeEx::EmbedEmoji;
-        io.Fonts->AddFontDefault(&cfg);
+        fontDefault = io.Fonts->AddFontDefault(&cfg);
     }
 
     ImVector<unsigned char> emojiFontData{};

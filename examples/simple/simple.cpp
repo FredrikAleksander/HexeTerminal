@@ -11,22 +11,26 @@
 #undef max
 #undef min
 
-static void LoadEmojiFont(ImVector<unsigned char> &emojiBuffer) {
+static void LoadEmojiFont(ImVector<unsigned char> &emojiBuffer)
+{
 
   auto p = std::filesystem::path(SDL_GetBasePath()) / "NotoColorEmoji.ttf";
-  if (std::filesystem::exists(p)) {
+  if (std::filesystem::exists(p))
+  {
     std::ifstream emojiFile(p.c_str(), std::ios::binary | std::ios::ate);
     std::streamsize size = emojiFile.tellg();
     emojiFile.seekg(0, std::ios::beg);
 
     emojiBuffer.resize((int)size);
-    if (!emojiFile.read((char *)emojiBuffer.Data, size)) {
+    if (!emojiFile.read((char *)emojiBuffer.Data, size))
+    {
       emojiBuffer.clear();
     }
   }
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
   int windowWidth = 800;
   int windowHeight = 600;
   bool fullscreen = false;
@@ -37,7 +41,8 @@ int main(int argc, char *argv[]) {
 #endif
 
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) !=
-      0) {
+      0)
+  {
     fprintf(stderr, "%s", SDL_GetError());
     return 1;
   }
@@ -55,7 +60,8 @@ int main(int argc, char *argv[]) {
   SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
   SDL_WindowFlags window_flags = (SDL_WindowFlags)(
       SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-  if (fullscreen) {
+  if (fullscreen)
+  {
     window_flags =
         (SDL_WindowFlags)(window_flags | SDL_WINDOW_FULLSCREEN_DESKTOP);
   }
@@ -66,8 +72,11 @@ int main(int argc, char *argv[]) {
   SDL_GL_MakeCurrent(window, gl_context);
   SDL_GL_SetSwapInterval(1); // Enable vsync
 
+  glewExperimental = true;
+
   bool err = glewInit() != GLEW_OK;
-  if (err) {
+  if (err)
+  {
     SDL_GL_DeleteContext(gl_context);
     SDL_DestroyWindow(window);
     SDL_Quit();
@@ -110,12 +119,16 @@ int main(int argc, char *argv[]) {
 
   ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
-  while (!exitRequested) {
+  while (!exitRequested)
+  {
     SDL_Event event;
-    if (SDL_WaitEventTimeout(&event, 4)) {
-      do {
+    if (SDL_WaitEventTimeout(&event, 4))
+    {
+      do
+      {
         ImGui_ImplSDL2_ProcessEvent(&event);
-        switch (event.type) {
+        switch (event.type)
+        {
         case SDL_QUIT:
           exitRequested = true;
         case SDL_WINDOWEVENT:
@@ -130,13 +143,16 @@ int main(int argc, char *argv[]) {
     ImGui_ImplSDL2_NewFrame(window);
     ImGui::NewFrame();
 
-    if (ImGui::BeginMainMenuBar()) {
-      if (ImGui::BeginMenu("File")) {
+    if (ImGui::BeginMainMenuBar())
+    {
+      if (ImGui::BeginMenu("File"))
+      {
         if (ImGui::MenuItem("Exit"))
           exitRequested = true;
         ImGui::EndMenu();
       }
-      if (ImGui::BeginMenu("Windows")) {
+      if (ImGui::BeginMenu("Windows"))
+      {
         ImGui::MenuItem("Demo Window", nullptr, &showDemoWindow);
         ImGui::MenuItem("Terminal Window", nullptr, &showTerminalWindow);
         ImGui::EndMenu();
@@ -147,22 +163,26 @@ int main(int argc, char *argv[]) {
     if (terminal)
       terminal->Update();
 
-    if (showDemoWindow) {
+    if (showDemoWindow)
+    {
       ImGui::ShowDemoWindow(&showDemoWindow);
     }
 
-    if (showTerminalWindow) {
+    if (showTerminalWindow)
+    {
       ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{});
       ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{});
 
       if (ImGui::Begin("Terminal", &showTerminalWindow,
-                       ImGuiWindowFlags_NoMove)) {
+                       ImGuiWindowFlags_NoMove))
+      {
         auto scale = ImGui::GetFontSize() / fontDefault->FontSize;
 
         auto contentRegion = ImGui::GetContentRegionAvail();
         auto contentPos = ImGui::GetCursorScreenPos();
 
-        if (!terminal || terminal->HasTerminated()) {
+        if (!terminal || terminal->HasTerminated())
+        {
           auto spacingChar = fontDefault->FindGlyph('A');
           auto charWidth = spacingChar->AdvanceX * scale;
           auto charHeight = fontDefault->FontSize * scale;
@@ -180,7 +200,8 @@ int main(int argc, char *argv[]) {
         }
         if (!terminal)
           exitRequested = true;
-        else {
+        else
+        {
           terminal->Draw(ImVec4(contentPos.x, contentPos.y,
                                 contentPos.x + contentRegion.x,
                                 contentPos.y + contentRegion.y),
@@ -220,10 +241,12 @@ int main(int argc, char *argv[]) {
   ImGui_ImplSDL2_Shutdown();
   ImGui::DestroyContext();
 
-  if (gl_context) {
+  if (gl_context)
+  {
     SDL_GL_DeleteContext(gl_context);
   }
-  if (window) {
+  if (window)
+  {
     SDL_DestroyWindow(window);
   }
 

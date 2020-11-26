@@ -2524,9 +2524,7 @@ std::unique_ptr<TerminalEmulator> TerminalEmulator::Create(PtyPtr &&pty, ProcPtr
         return nullptr;
     }
 
-    std::unique_ptr<TerminalEmulator> term = std::unique_ptr<TerminalEmulator>(new TerminalEmulator(std::move(pty), std::move(process), display));
-
-    return term;
+    return std::unique_ptr<TerminalEmulator>(new TerminalEmulator(std::move(pty), std::move(process), display));
 }
 
 TerminalEmulator::TerminalEmulator(PtyPtr &&pty, ProcPtr &&process, const std::shared_ptr<TerminalDisplay> &display)

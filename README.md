@@ -48,3 +48,16 @@ This example demonstrates a simple pure terminal emulator. It will fill the wind
 It supports loading a full set of fonts (regular, bold, italic, bold italic), which is currently hardcoded to the JetBrains Mono nerd font files. These are not provided in the repo and must be downloaded and copied to the same folder as the terminal emulator executable. It will fallback to the builtin ImGui default font if it cannot find the JetBrains Mono font files.
 
 It will also attempt to load color emojis from a file NotoColorEmoji.ttf, if that file is found in the same folder as the executable. With a recent enough freetype build, it should support all common emoji font formats, except SVGinOTF (used by twitter)
+
+
+# Windows
+
+Here is an incoherent rant from a madman about ptys on Windows.
+
+Windows only recently added support for pseudoterminals, and most Windows builds have somewhat buggy implementations. The good news is that it will eventually resolve itself,
+as more recent builds of Windows are pushed out, but until then, alot of Windows users will suffer a degraded experience due to this. Some of these bugs are really weird,
+and are often difficult to track down. There is however a few solutions to these problems, but they are out of scope of this project, and purely Windows specific, so I do not
+want to make it part of the library, but I can explain how one would work around all these problems, and distribute a bleeding edge version of the pseudoterminal API.
+The new Windows Terminal source also contains the code for a userspace library that implements the ConPTY API, and which may be built as a static library (MIT licensed), or as a DLL
+and bundled with the application. It also contains code for the console host (aka conhost.exe), which may built as OpenConsole.exe and when located in the same folder as the application (if linking to a static ConPTY), or the folder of the ConPTY dll, will be used as the console host invoked by ConPTY. Most of the issues I've encountered is in the console host, and it is even possible to use a build you've compiled yourself and replace your system conhost.exe with it, and it will work (NOT RECOMMENDED, do not do this), infact I run with that change (again, do not do this, just because I'm a moron doesn't mean you have to be). Some of the issues I've experienced are stuff like certain attributes not working (italic, strikethrough, underline), certain characters, especially emojis etc completely messes up the display. So in the end if you plan on distributing your application on Windows, you may consider building
+and distributing a custom built ConPTY dll and OpenConsole.exe console host with your application, to ensure a consistent user experience. It seems this is the route that Windows Terminal is going. The Windows Terminal repository at Github is highly recommended for more information on how this stuff works on Windows. And it is all MIT licensed (even the console host, which is part of Windows itself)
